@@ -60,9 +60,14 @@ final class WordPress_Telegram_Bildirim {
 		}
 
 		$settings = is_array( $settings ) ? $settings : array();
+		$bot_token = isset( $settings['bot_token'] ) ? sanitize_text_field( $settings['bot_token'] ) : '';
+		if ( '' === $bot_token ) {
+			$current_settings = $this->get_settings();
+			$bot_token = $current_settings['bot_token'];
+		}
 
 		return array(
-			'bot_token' => isset( $settings['bot_token'] ) ? sanitize_text_field( $settings['bot_token'] ) : '',
+			'bot_token' => $bot_token,
 			'chat_id'   => isset( $settings['chat_id'] ) ? sanitize_text_field( $settings['chat_id'] ) : '',
 		);
 	}
@@ -81,7 +86,7 @@ final class WordPress_Telegram_Bildirim {
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><label for="telegram-bot-token">Bot tokenı</label></th>
-						<td><input id="telegram-bot-token" type="password" class="regular-text" name="<?php echo esc_attr( self::OPTION_NAME ); ?>[bot_token]" value="<?php echo esc_attr( $settings['bot_token'] ); ?>" autocomplete="new-password" /></td>
+						<td><input id="telegram-bot-token" type="password" class="regular-text" name="<?php echo esc_attr( self::OPTION_NAME ); ?>[bot_token]" value="" placeholder="<?php echo '' === $settings['bot_token'] ? '' : esc_attr__( 'Kaydedilmiş tokenı değiştirmek için yeni token girin', 'wordpress-telegram-bildirim' ); ?>" autocomplete="new-password" /></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="telegram-chat-id">Yönetici sohbet kimliği</label></th>
@@ -107,21 +112,27 @@ final class WordPress_Telegram_Bildirim {
 	}
 
 	public function post_updated( $post_id, $post_after, $post_before ) {
-		if (
-			$this->is_supported_content( $post_after )
-			&& (
-				'page' === $post_after->post_type
-				|| ( 'publish' === $post_after->post_status && 'publish' === $post_before->post_status )
-			)
-			&& ! wp_is_post_revision( $post_id )
-			&& ! wp_is_post_autosave( $post_id )
-		) {
+		if ( ! $this->is_supported_content( $post_after ) || wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+			return;
+		}
+
+		if ( 'page' === $post_after->post_type ) {
+			$event = 'auto-draft' === $post_before->post_status && 'auto-draft' !== $post_after->post_status
+				? 'Oluşturuldu'
+				: 'Düzenlendi';
+			$this->notify( $event, $post_after );
+		} elseif ( 'publish' === $post_after->post_status && 'publish' === $post_before->post_status ) {
 			$this->notify( 'Düzenlendi', $post_after );
 		}
 	}
 
 	public function page_created( $post, $update, $post_before ) {
-		if ( ! $update && $this->is_supported_content( $post ) && 'page' === $post->post_type ) {
+		if (
+			! $update
+			&& 'page' === $post->post_type
+			&& 'auto-draft' !== $post->post_status
+			&& $this->is_supported_content( $post )
+		) {
 			$this->notify( 'Oluşturuldu', $post );
 		}
 	}
@@ -198,10 +209,11 @@ final class WordPress_Telegram_Bildirim {
 	private function notify_comment( $event, $comment ) {
 		$post = get_post( $comment->comment_post_ID );
 		$title = $post ? $post->post_title : '';
+		$content = wp_html_excerpt( wp_strip_all_tags( $comment->comment_content ), 2500, '…' );
 		$this->send_message(
 			$event . ' (' . $title . ')'
 			. "\nYazan: " . $comment->comment_author
-			. "\n" . wp_strip_all_tags( $comment->comment_content )
+			. "\n" . $content
 		);
 	}
 
