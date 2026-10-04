@@ -24,6 +24,7 @@ final class WordPress_Telegram_Bildirim {
 		add_action( 'transition_post_status', array( $this, 'post_published' ), 10, 3 );
 		add_action( 'post_updated', array( $this, 'post_updated' ), 10, 3 );
 		add_action( 'wp_after_insert_post', array( $this, 'page_created' ), 10, 3 );
+		add_action( 'trashed_post', array( $this, 'post_deleted' ), 10, 2 );
 		add_action( 'before_delete_post', array( $this, 'post_deleted' ), 10, 2 );
 
 		add_action( 'comment_post', array( $this, 'comment_created' ), 10, 3 );
@@ -117,6 +118,10 @@ final class WordPress_Telegram_Bildirim {
 		}
 
 		if ( 'page' === $post_after->post_type ) {
+			if ( 'trash' === $post_after->post_status ) {
+				return;
+			}
+
 			$event = 'auto-draft' === $post_before->post_status && 'auto-draft' !== $post_after->post_status
 				? 'Oluşturuldu'
 				: 'Düzenlendi';
@@ -176,13 +181,13 @@ final class WordPress_Telegram_Bildirim {
 	}
 
 	public function user_logged_in( $user_login, $user ) {
-		$this->send_message( 'Yönetici girişi: ' . $user_login );
+		$this->send_message( 'Kullanıcı girişi: ' . $user_login );
 	}
 
-	public function user_logged_out() {
-		$user = wp_get_current_user();
-		if ( $user->exists() ) {
-			$this->send_message( 'Yönetici çıkışı: ' . $user->user_login );
+	public function user_logged_out( $user_id = 0 ) {
+		$user = $user_id ? get_user_by( 'id', $user_id ) : wp_get_current_user();
+		if ( $user && $user->exists() ) {
+			$this->send_message( 'Kullanıcı çıkışı: ' . $user->user_login );
 		}
 	}
 
